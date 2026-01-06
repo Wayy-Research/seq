@@ -39,6 +39,7 @@ def format_methods(prediction: EnsemblePrediction) -> str:
     method_icons = {
         "rule-based": "[blue]R[/blue]",
         "oeis": "[green]O[/green]",
+        "constants": "[yellow]C[/yellow]",
         "ml/transformer": "[magenta]T[/magenta]",
         "ml/lstm": "[cyan]L[/cyan]",
     }
@@ -76,7 +77,7 @@ def display_result(
     ))
 
     # Legend
-    legend = "[blue]R[/blue]=Rules  [green]O[/green]=OEIS  [magenta]T[/magenta]=Transformer  [cyan]L[/cyan]=LSTM"
+    legend = "[blue]R[/blue]=Rules  [green]O[/green]=OEIS  [yellow]C[/yellow]=Constants  [magenta]T[/magenta]=Transformer  [cyan]L[/cyan]=LSTM"
     console.print(f"\n[dim]Methods: {legend}[/dim]\n")
 
     # Results for each missing position
@@ -176,6 +177,11 @@ def analyze(
         "--ml/--no-ml",
         help="Use ML models",
     ),
+    constants: bool = typer.Option(
+        True,
+        "--constants/--no-constants",
+        help="Use mathematical constants detection (e, pi, etc.)",
+    ),
 ) -> None:
     """
     Analyze a sequence and predict missing values.
@@ -202,6 +208,7 @@ def analyze(
             use_rules=rules,
             use_oeis=oeis,
             use_ml=ml,
+            use_constants=constants,
         )
 
         with Progress(

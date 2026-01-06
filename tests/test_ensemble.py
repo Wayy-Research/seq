@@ -67,9 +67,13 @@ class TestEnsembleDetector:
 
     @pytest.mark.asyncio
     async def test_cubes_ensemble(self):
-        """Test ensemble detection of cube numbers."""
+        """Test ensemble detection of cube numbers.
+
+        Note: Degree-3 polynomials require at least 6 points (2*degree)
+        to prevent overfitting.
+        """
         result = await analyze_sequence(
-            "1, 8, 27, ?, 125",
+            "1, 8, 27, ?, 125, 216, 343",
             use_rules=True,
             use_oeis=False,
             use_ml=False,

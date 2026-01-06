@@ -8,6 +8,7 @@ from .detectors.base import Detector, DetectionResult, Prediction, Sequence
 from .detectors.rules import RuleBasedDetector
 from .detectors.oeis import OEISDetector
 from .detectors.ml import MLDetector
+from .detectors.constants import ConstantsDetector
 
 
 @dataclass
@@ -71,6 +72,7 @@ class EnsembleDetector:
         use_rules: bool = True,
         use_oeis: bool = True,
         use_ml: bool = True,
+        use_constants: bool = True,
         method_weights: Optional[dict[str, float]] = None,
     ):
         """
@@ -80,6 +82,7 @@ class EnsembleDetector:
             use_rules: Whether to use rule-based detection
             use_oeis: Whether to use OEIS lookup
             use_ml: Whether to use ML models
+            use_constants: Whether to use mathematical constants detection
             method_weights: Custom weights for each method
         """
         self.detectors: list[Detector] = []
@@ -90,11 +93,14 @@ class EnsembleDetector:
             self.detectors.append(OEISDetector())
         if use_ml:
             self.detectors.append(MLDetector())
+        if use_constants:
+            self.detectors.append(ConstantsDetector())
 
         # Default weights based on expected reliability
         self.method_weights = method_weights or {
             "rule-based": 1.0,  # High weight for mathematical patterns
             "oeis": 0.9,        # High weight for known sequences
+            "constants": 0.95,  # High weight for known constants (very reliable when matched)
             "ml/transformer": 0.6,  # Medium weight for ML
             "ml/lstm": 0.6,
         }

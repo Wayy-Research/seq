@@ -248,9 +248,12 @@ class RuleBasedDetector(Detector):
         - Degree 3 (cubic): cubes, etc.
 
         Works with gaps in the sequence by using polynomial fitting directly.
+
+        IMPORTANT: A degree-n polynomial can fit ANY n+1 points perfectly (overfitting).
+        We require significantly more points than the degree to ensure the pattern is real.
         """
         known = sequence.known_pairs
-        if len(known) < 3:  # Need at least 3 points for polynomial fit
+        if len(known) < 4:  # Need at least 4 points for meaningful polynomial fit
             return {}
 
         x_known = np.array([idx for idx, _ in known])
@@ -261,8 +264,12 @@ class RuleBasedDetector(Detector):
         best_confidence = 0.0
 
         for degree in [2, 3, 4]:
-            if len(known) < degree + 1:
-                continue  # Need at least degree+1 points to fit
+            # CRITICAL: Require at least 2*degree points to prevent overfitting
+            # A degree-n polynomial fits ANY n+1 points perfectly, so we need
+            # significantly more points to verify the pattern is real
+            min_points_required = max(degree + 2, 2 * degree)
+            if len(known) < min_points_required:
+                continue
 
             try:
                 coeffs = np.polyfit(x_known, y_known, degree)
@@ -292,8 +299,15 @@ class RuleBasedDetector(Detector):
                 if all_integer:
                     confidence = min(1.0, confidence + 0.1)
 
-                # Prefer lower degree polynomials (Occam's razor)
-                confidence -= 0.05 * (degree - 2)
+                # Moderate penalty for higher degree polynomials (Occam's razor)
+                # Higher degrees are more likely to overfit
+                confidence -= 0.08 * (degree - 2)
+
+                # Small penalty when we're at the exact minimum points
+                # Having more points = more confidence the pattern is real
+                excess_points = len(known) - min_points_required
+                if excess_points == 0:
+                    confidence -= 0.05
 
                 if confidence > best_confidence:
                     best_confidence = confidence
@@ -358,13 +372,20 @@ class RuleBasedDetector(Detector):
         if len(known) < 5:
             return {}
 
-        # Try recurrence orders 2 and 3
+        # Try recurrence orders 2 and 3, pick the best fit
+        best_predictions = {}
+        best_confidence = 0.0
+
         for order in [2, 3]:
             predictions = self._try_recurrence_order(sequence, known, order)
             if predictions:
-                return predictions
+                # Get average confidence from predictions
+                avg_conf = sum(p.confidence for p in predictions.values()) / len(predictions)
+                if avg_conf > best_confidence:
+                    best_confidence = avg_conf
+                    best_predictions = predictions
 
-        return {}
+        return best_predictions
 
     def _try_recurrence_order(
         self, sequence: Sequence, known: list[tuple[int, float]], order: int
