@@ -15,6 +15,7 @@ class RuleBasedDetector(Detector):
     - Fibonacci-like sequences (each term = sum of previous two)
     - Polynomial sequences (differences stabilize)
     - Linear recurrence relations
+    - Alternating ratio sequences (e.g., ×5, ×2, ×5, ×2...)
     """
 
     name = "rule-based"
@@ -27,6 +28,7 @@ class RuleBasedDetector(Detector):
         detectors = [
             self._detect_arithmetic,
             self._detect_geometric,
+            self._detect_alternating_ratio,
             self._detect_fibonacci,
             self._detect_polynomial,
             self._detect_linear_recurrence,
@@ -158,6 +160,107 @@ class RuleBasedDetector(Detector):
                 pattern_name="Geometric",
                 explanation=f"Geometric sequence with common ratio {avg_ratio:.2f}"
             )
+
+        return predictions
+
+    def _detect_alternating_ratio(self, sequence: Sequence) -> dict[int, Prediction]:
+        """
+        Detect alternating ratio sequences (two ratios that alternate).
+
+        Example: 1, 5, 10, 50, 100, 500, 1000 (ratios: ×5, ×2, ×5, ×2, ×5, ×2)
+        """
+        known = sequence.known_pairs
+        if len(known) < 4:  # Need at least 4 values to detect alternating pattern
+            return {}
+
+        # Check for zeros (ratios won't work)
+        if any(v == 0 for _, v in known):
+            return {}
+
+        # Build index -> value map
+        val_map = {idx: val for idx, val in known}
+        indices = sorted(val_map.keys())
+
+        # Calculate ratios for consecutive indices
+        ratios_with_positions = []
+        for i in range(len(indices) - 1):
+            idx1, idx2 = indices[i], indices[i + 1]
+            # Only consider consecutive indices (gap of 1)
+            if idx2 - idx1 == 1:
+                try:
+                    ratio = val_map[idx2] / val_map[idx1]
+                    ratios_with_positions.append((idx1, ratio))
+                except (ZeroDivisionError, ValueError):
+                    return {}
+
+        if len(ratios_with_positions) < 3:  # Need at least 3 ratios to detect alternation
+            return {}
+
+        # Separate ratios by position parity (even/odd index)
+        even_ratios = [r for idx, r in ratios_with_positions if idx % 2 == 0]
+        odd_ratios = [r for idx, r in ratios_with_positions if idx % 2 == 1]
+
+        if not even_ratios or not odd_ratios:
+            return {}
+
+        # Check if each group is consistent
+        avg_even = np.mean(even_ratios)
+        avg_odd = np.mean(odd_ratios)
+        std_even = np.std(even_ratios) if len(even_ratios) > 1 else 0
+        std_odd = np.std(odd_ratios) if len(odd_ratios) > 1 else 0
+
+        # Both groups must be internally consistent
+        if avg_even == 0 or avg_odd == 0:
+            return {}
+
+        even_consistent = std_even < 0.01 * abs(avg_even) or std_even < 0.001
+        odd_consistent = std_odd < 0.01 * abs(avg_odd) or std_odd < 0.001
+
+        if not (even_consistent and odd_consistent):
+            return {}
+
+        # The two ratios must be different (otherwise it's just geometric)
+        if abs(avg_even - avg_odd) < 0.01 * max(abs(avg_even), abs(avg_odd)):
+            return {}
+
+        # High confidence if pattern holds
+        confidence = 0.95
+
+        # Predict missing values
+        predictions = {}
+        for missing_idx in sequence.missing_indices:
+            # Find the closest known value to work from
+            predicted_val = None
+
+            # Try to compute forward from a known predecessor
+            if (missing_idx - 1) in val_map:
+                prev_idx = missing_idx - 1
+                ratio = avg_even if prev_idx % 2 == 0 else avg_odd
+                predicted_val = val_map[prev_idx] * ratio
+
+            # Try to compute backward from a known successor
+            elif (missing_idx + 1) in val_map:
+                next_idx = missing_idx + 1
+                # The ratio from missing_idx to next_idx
+                ratio = avg_even if missing_idx % 2 == 0 else avg_odd
+                predicted_val = val_map[next_idx] / ratio
+
+            if predicted_val is not None:
+                # Round to int if close
+                if abs(predicted_val - round(predicted_val)) < 0.001:
+                    predicted_val = int(round(predicted_val))
+
+                # Format ratios for explanation
+                r1 = avg_even if abs(avg_even - round(avg_even)) > 0.01 else int(round(avg_even))
+                r2 = avg_odd if abs(avg_odd - round(avg_odd)) > 0.01 else int(round(avg_odd))
+
+                predictions[missing_idx] = Prediction(
+                    value=predicted_val,
+                    confidence=confidence,
+                    method=self.name,
+                    pattern_name="Alternating Ratio",
+                    explanation=f"Alternating ratios: ×{r1}, ×{r2}, ×{r1}, ×{r2}..."
+                )
 
         return predictions
 
