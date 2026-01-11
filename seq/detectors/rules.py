@@ -13,6 +13,7 @@ class RuleBasedDetector(Detector):
     - Arithmetic sequences (constant difference)
     - Geometric sequences (constant ratio)
     - Fibonacci-like sequences (each term = sum of previous two)
+    - Tribonacci-like sequences (each term = sum of previous three)
     - Polynomial sequences (differences stabilize)
     - Linear recurrence relations
     - Alternating ratio sequences (e.g., ×5, ×2, ×5, ×2...)
@@ -30,6 +31,7 @@ class RuleBasedDetector(Detector):
             self._detect_geometric,
             self._detect_alternating_ratio,
             self._detect_fibonacci,
+            self._detect_tribonacci,
             self._detect_polynomial,
             self._detect_linear_recurrence,
         ]
@@ -336,6 +338,85 @@ class RuleBasedDetector(Detector):
         # a[idx] = a[idx+1] - a[idx-1]
         if (idx + 1) in val_map and (idx - 1) in val_map:
             val = val_map[idx + 1] - val_map[idx - 1]
+            if abs(val - round(val)) < 0.1:
+                return int(round(val))
+            return val
+
+        return None
+
+    def _detect_tribonacci(self, sequence: Sequence) -> dict[int, Prediction]:
+        """
+        Detect Tribonacci-like sequences (a[n] = a[n-1] + a[n-2] + a[n-3]).
+
+        Example: 0, 0, 1, 1, 2, 4, 7, 13, 24
+        """
+        known = sequence.known_pairs
+        if len(known) < 4:
+            return {}
+
+        # Check if the pattern a[n] = a[n-1] + a[n-2] + a[n-3] holds for known values
+        matches = 0
+        total_checks = 0
+
+        # Build index -> value map from known values
+        val_map = {idx: val for idx, val in known}
+
+        for idx, val in known:
+            if (idx - 1) in val_map and (idx - 2) in val_map and (idx - 3) in val_map:
+                expected = val_map[idx - 1] + val_map[idx - 2] + val_map[idx - 3]
+                if abs(expected - val) < 0.001:
+                    matches += 1
+                total_checks += 1
+
+        if total_checks == 0:
+            return {}
+
+        confidence = matches / total_checks
+
+        if confidence < 0.8:  # Require high confidence for Tribonacci
+            return {}
+
+        # Predict missing values
+        predictions = {}
+
+        # For each missing index, try to compute from neighbors
+        for missing_idx in sequence.missing_indices:
+            predicted_val = self._predict_tribonacci_value(missing_idx, val_map, sequence)
+            if predicted_val is not None:
+                predictions[missing_idx] = Prediction(
+                    value=predicted_val,
+                    confidence=confidence,
+                    method=self.name,
+                    pattern_name="Tribonacci",
+                    explanation="Tribonacci-like sequence: a[n] = a[n-1] + a[n-2] + a[n-3]"
+                )
+
+        return predictions
+
+    def _predict_tribonacci_value(
+        self, idx: int, val_map: dict[int, float], sequence: Sequence
+    ) -> Optional[int | float]:
+        """Predict a Tribonacci value given known values."""
+        # Try forward: if we know idx-1, idx-2, and idx-3, compute idx
+        if (idx - 1) in val_map and (idx - 2) in val_map and (idx - 3) in val_map:
+            val = val_map[idx - 1] + val_map[idx - 2] + val_map[idx - 3]
+            if abs(val - round(val)) < 0.1:
+                return int(round(val))
+            return val
+
+        # Try backward: if we know idx+1, idx+2, and idx+3, compute idx
+        # a[idx] = a[idx+3] - a[idx+2] - a[idx+1]
+        if (idx + 1) in val_map and (idx + 2) in val_map and (idx + 3) in val_map:
+            val = val_map[idx + 3] - val_map[idx + 2] - val_map[idx + 1]
+            if abs(val - round(val)) < 0.1:
+                return int(round(val))
+            return val
+
+        # Try another backward: if we know idx+1, idx-1, and idx-2
+        # a[idx+1] = a[idx] + a[idx-1] + a[idx-2]
+        # a[idx] = a[idx+1] - a[idx-1] - a[idx-2]
+        if (idx + 1) in val_map and (idx - 1) in val_map and (idx - 2) in val_map:
+            val = val_map[idx + 1] - val_map[idx - 1] - val_map[idx - 2]
             if abs(val - round(val)) < 0.1:
                 return int(round(val))
             return val
